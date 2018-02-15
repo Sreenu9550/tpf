@@ -1,0 +1,66 @@
+#!/usr/bin/env groovy
+node {
+  def WFW_ENV = "/opt/workflow"
+  def PROFILE = "PROD_4"
+  def TAG = "PROD_4"
+  def ORIGIN_TAG = "Release_R1_2018_DELTA"
+  def GIT_URL = "https://vhldvztdt001.tvlport.net:8443/gitblit/r/dev/Workflow.git"
+  Date date = new Date()
+  String BUILD_TIME = date.format("YYYYMMDDHHmmss")
+  def BUILD_PATH = "/opt/delivery/release"
+  
+  properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', numToKeepStr: '10')), disableConcurrentBuilds(), pipelineTriggers([])])
+
+  stage ('Checkout') {
+    deleteDir()
+    checkout scm: [$class: 'GitSCM', userRemoteConfigs: [[url: (GIT_URL), credentialsId: '80b50f11-b5d5-4093-b4f9-70ee5fe0e88a']], branches: [[name: (ORIGIN_TAG)]]],poll:false
+  }
+
+  stage ('Clean') {
+    sh "JAVA_HOME=/usr/java/default; /opt/apache-maven-3.3.9/bin/mvn clean"
+  }
+  
+  stage ('Install') {
+  	sh "JAVA_HOME=/usr/java/default; /opt/apache-maven-3.3.9/bin/mvn install:install-file -Dfile=Derived/TOSIBM/TOSApi_1.2.6.jar -DgroupId=com.ibm.tpf -DartifactId=TOSApi -Dversion=1.2.06 -Dpackaging=jar"
+  }
+
+  stage ('Compile and Testing') {
+    withCredentials([usernamePassword(credentialsId: '016ddd16-7d47-489a-ad56-7805a98baefa', passwordVariable: 'wf_db_app_password', usernameVariable: 'wf_db_app_username'),usernamePassword(credentialsId: 'dae5d0d9-57c2-4eaf-bf8f-2e00c1b9d9c5', passwordVariable: 'wf_db_ticket_password', usernameVariable: 'wf_db_ticket_username'),usernamePassword(credentialsId: 'f0d7d31a-be6a-4293-a4fa-19a596398b28', passwordVariable: 'wf_db_csr_password', usernameVariable: 'wf_db_csr_username'),usernamePassword(credentialsId: '2158e2e5-e711-4cc4-862c-8e0f4135b980', passwordVariable: 'wf_db_vpar_password', usernameVariable: 'wf_db_vpar_username'),usernamePassword(credentialsId: 'a9982aea-412d-430d-87c9-470c8c89b345', passwordVariable: 'wf_service_password', usernameVariable: 'wf_service_user'),usernamePassword(credentialsId: 'dfdff063-1038-4ad3-9094-ac796986b4a5', passwordVariable: 'wf_tos_file_password', usernameVariable: 'wf_tos_file_user')]) {
+	  sh "JAVA_HOME=/usr/java/default; /opt/apache-maven-3.3.9/bin/mvn -P${PROFILE} -Ddb.app.username=${wf_db_app_username} -Ddb.app.password=${wf_db_app_password} -Ddb.ticket.username=${wf_db_ticket_username} -Ddb.ticket.password=${wf_db_ticket_password} -Ddb.csr.username=${wf_db_csr_username} -Ddb.csr.password=${wf_db_csr_password} -Ddb.vpar.username=${wf_db_vpar_username} -Ddb.vpar.password=${wf_db_vpar_password} -Dservice.username=${wf_service_user} -Dservice.password=${wf_service_password} -Dtos.file.domain=${env.wf_tos_file_domain} -Dtos.file.username=${wf_tos_file_user} -Dtos.file.password=${wf_tos_file_password} -DskipTests=true compile install"
+	}
+  }
+
+   stage ('SonarQube ') {
+    withSonarQubeEnv('SonarQube6.0') {
+      sh '/opt/apache-maven-3.3.9/bin/mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.2:sonar'
+    }
+  }
+
+  stage ('Packaging') {
+    withCredentials([usernamePassword(credentialsId: '016ddd16-7d47-489a-ad56-7805a98baefa', passwordVariable: 'wf_db_app_password', usernameVariable: 'wf_db_app_username'),usernamePassword(credentialsId: 'dae5d0d9-57c2-4eaf-bf8f-2e00c1b9d9c5', passwordVariable: 'wf_db_ticket_password', usernameVariable: 'wf_db_ticket_username'),usernamePassword(credentialsId: 'f0d7d31a-be6a-4293-a4fa-19a596398b28', passwordVariable: 'wf_db_csr_password', usernameVariable: 'wf_db_csr_username'),usernamePassword(credentialsId: '2158e2e5-e711-4cc4-862c-8e0f4135b980', passwordVariable: 'wf_db_vpar_password', usernameVariable: 'wf_db_vpar_username'),usernamePassword(credentialsId: 'a9982aea-412d-430d-87c9-470c8c89b345', passwordVariable: 'wf_service_password', usernameVariable: 'wf_service_user'),usernamePassword(credentialsId: 'dfdff063-1038-4ad3-9094-ac796986b4a5', passwordVariable: 'wf_tos_file_password', usernameVariable: 'wf_tos_file_user')]) {
+	  sh "JAVA_HOME=/usr/java/default; /opt/apache-maven-3.3.9/bin/mvn -P${PROFILE} -Ddb.app.username=${wf_db_app_username} -Ddb.app.password=${wf_db_app_password} -Ddb.ticket.username=${wf_db_ticket_username} -Ddb.ticket.password=${wf_db_ticket_password} -Ddb.csr.username=${wf_db_csr_username} -Ddb.csr.password=${wf_db_csr_password} -Ddb.vpar.username=${wf_db_vpar_username} -Ddb.vpar.password=${wf_db_vpar_password} -Dservice.username=${wf_service_user} -Dservice.password=${wf_service_password} -Dtos.file.domain=${env.wf_tos_file_domain} -Dtos.file.username=${wf_tos_file_user} -Dtos.file.password=${wf_tos_file_password} -DskipTests=true package"
+	}
+  }
+  
+  stage ('Bundle') {
+    withCredentials([usernamePassword(credentialsId: '016ddd16-7d47-489a-ad56-7805a98baefa', passwordVariable: 'wf_db_app_password', usernameVariable: 'wf_db_app_username'),usernamePassword(credentialsId: 'dae5d0d9-57c2-4eaf-bf8f-2e00c1b9d9c5', passwordVariable: 'wf_db_ticket_password', usernameVariable: 'wf_db_ticket_username'),usernamePassword(credentialsId: 'f0d7d31a-be6a-4293-a4fa-19a596398b28', passwordVariable: 'wf_db_csr_password', usernameVariable: 'wf_db_csr_username'),usernamePassword(credentialsId: '2158e2e5-e711-4cc4-862c-8e0f4135b980', passwordVariable: 'wf_db_vpar_password', usernameVariable: 'wf_db_vpar_username'),usernamePassword(credentialsId: 'a9982aea-412d-430d-87c9-470c8c89b345', passwordVariable: 'wf_service_password', usernameVariable: 'wf_service_user'),usernamePassword(credentialsId: 'dfdff063-1038-4ad3-9094-ac796986b4a5', passwordVariable: 'wf_tos_file_password', usernameVariable: 'wf_tos_file_user')]) {
+	  sh "mkdir -p ${BUILD_PATH}/${PROFILE}/${BUILD_TIME}"
+	  sh "cp TOSAutomation/target/TOSAutomation*dependencies.jar '${BUILD_PATH}/${PROFILE}/${BUILD_TIME}/TOSAutomation.jar'"
+	  sh "cp UI/target/WorkFlowUI*.war '${BUILD_PATH}/${PROFILE}/${BUILD_TIME}/WorkFlow.war'"
+	  sh "cp JGITAPI/target/JGITAPI*.war '${BUILD_PATH}/${PROFILE}/${BUILD_TIME}/JGitAPI.war'"
+	  sh "cp API/target/WorkFlowAPI*.war '${BUILD_PATH}/${PROFILE}/${BUILD_TIME}/WorkFlowAPI.war'"
+	  sh "cp ShellScripts/target/ShellScripts*.jar '${BUILD_PATH}/${PROFILE}/${BUILD_TIME}/ShellScripts.jar'"
+	}
+  }
+
+  stage ('Tagging') {
+    withCredentials([usernamePassword(credentialsId: '80b50f11-b5d5-4093-b4f9-70ee5fe0e88a', passwordVariable: 'SRV_PASS', usernameVariable: 'SRV_USER')]) {
+      def gitUrl = sh(returnStdout: true, script: 'git config remote.origin.url').trim()
+      def SRV_PWD = pwd()
+      sh """
+         sshpass -p $SRV_PASS ssh -o StrictHostKeyChecking=no -l $SRV_USER vhldvztdt001.tvlport.net "git clone -b $ORIGIN_TAG --single-branch --depth 1 $gitUrl /tmp/tmp_Workflow; cd /tmp/tmp_Workflow; git tag -d Snapshot_${TAG}; git tag -a Snapshot_${TAG} -m DeployedIn${TAG}; git push origin :refs/tags/Snapshot_${TAG}; git push --tags; rm /tmp/tmp_Workflow -Rf"
+         """
+    }
+  }
+}
+
